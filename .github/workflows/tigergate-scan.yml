@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 env:
-  IMAGE_NAME: ashzog/tigergate-cicd-qa:latest
+  IMAGE_NAME: nurepublic/cicd-test:latest
   TIGERGATE_CLI: tigergate/tigergate-cli:1.2.3
   TIGERGATE_API_URL: https://api.staging.tigergate.dev/api/ci
   FAIL_ON_SEVERITY: critical,high
