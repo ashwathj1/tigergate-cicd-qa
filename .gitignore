@@ -1,0 +1,12 @@
+# TigerGate CI/CD QA - Git Ignore
+*.log
+*.tmp
+.env.local
+__pycache__/
+*.pyc
+node_modules/
+.gradle/
+target/
+*.class
+*.jar
+

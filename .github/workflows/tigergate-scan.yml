@@ -1,0 +1,75 @@
+name: TigerGate Container Security & Push Protection
+
+on:
+  push:
+    branches: [ master, main ]
+  pull_request:
+    branches: [ master, main ]
+  workflow_dispatch:
+
+env:
+  IMAGE_NAME: ashzog/tigergate-cicd-qa:latest
+  TIGERGATE_CLI: tigergate/tigergate-cli:1.2.3
+  TIGERGATE_API_URL: https://api.staging.tigergate.dev/api/ci
+  FAIL_ON_SEVERITY: critical,high
+
+jobs:
+  build-scan-and-protect:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Container Image
+        run: |
+          echo "Building Docker image: $IMAGE_NAME"
+          docker build -t "$IMAGE_NAME" .
+
+      - name: TigerGate Container Security Scan
+        id: tigergate_scan
+        env:
+          TIGERGATE_API_KEY: ${{ secrets.TIGERGATE_API_KEY }}
+        run: |
+          echo "Executing TigerGate Container Security Scan (CLI v1.2.3)..."
+          docker run --rm \
+            -e TIGERGATE_API_KEY="$TIGERGATE_API_KEY" \
+            -v ${{ github.workspace }}:/workspace \
+            -w /workspace \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            "$TIGERGATE_CLI" \
+            scan \
+            --api-url "$TIGERGATE_API_URL" \
+            --type image \
+            --image "$IMAGE_NAME" \
+            --scan-scope full \
+            --fail-on "$FAIL_ON_SEVERITY" \
+            --upload
+
+      - name: Docker Hub Login (Push Protection Gated)
+        if: success() && github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Push Image to Registry (Only Executed if Quality Gate Passes)
+        if: success() && github.event_name != 'pull_request'
+        run: |
+          echo "Quality Gate PASSED! Securely pushing $IMAGE_NAME to Docker Hub..."
+          docker push "$IMAGE_NAME"
+
+      - name: Security Gate Audit Summary
+        if: always()
+        run: |
+          if [ "${{ steps.tigergate_scan.outcome }}" == "success" ]; then
+            echo "✅ TigerGate Security Gate PASSED. Image is compliant." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ TigerGate Security Gate FAILED. Push to registry was BLOCKED by Push Protection policy." >> $GITHUB_STEP_SUMMARY
+          fi
+
